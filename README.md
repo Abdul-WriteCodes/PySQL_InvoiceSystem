@@ -31,3 +31,15 @@ The application is operated through a simple and intuitive command-line interfac
     [1] Generate a New Invoice: Allows users to input customer and product details and generate a new invoice.
     [2] Retrieve an Existing Invoice: Users can retrieve a previously generated invoice by its unique ID.
     [3] Exit: The user can exit the application at any time.
+
+
+
+10
+https://flutterwave.com/pay/j5m67hrqr4iq
+
+25
+https://flutterwave.com/pay/txyljcuqfsel
+
+
+45
+https://flutterwave.com/pay/yw7k3gmyjoud
