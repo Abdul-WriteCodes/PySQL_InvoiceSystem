@@ -1,0 +1,643 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=IBM+Plex+Mono:wght@400;500&family=Outfit:wght@300;400;500;600&display=swap');
+
+/* ── Root Variables ─────────────────────────── */
+:root {
+    --bg-base: #0d0f14;
+    --bg-card: #13161e;
+    --bg-card-hover: #181c26;
+    --bg-surface: #1a1e28;
+    --border: #252a38;
+    --border-accent: #2e364a;
+    --accent: #5b7fff;
+    --accent-soft: rgba(91, 127, 255, 0.12);
+    --accent-glow: rgba(91, 127, 255, 0.25);
+    --gold: #e8c96d;
+    --gold-soft: rgba(232, 201, 109, 0.1);
+    --green: #4cc9a0;
+    --red: #f87171;
+    --text-primary: #e8eaf0;
+    --text-secondary: #8a90a2;
+    --text-muted: #505668;
+    --font-display: 'DM Serif Display', serif;
+    --font-body: 'Outfit', sans-serif;
+    --font-mono: 'IBM Plex Mono', monospace;
+    --radius: 10px;
+    --radius-lg: 16px;
+}
+
+/* ── Global Reset ───────────────────────────── */
+html, body, [data-testid="stAppViewContainer"] {
+    background-color: var(--bg-base) !important;
+    color: var(--text-primary) !important;
+    font-family: var(--font-body) !important;
+}
+
+[data-testid="stSidebar"] {
+    background-color: #0a0c10 !important;
+    border-right: 1px solid var(--border) !important;
+}
+
+[data-testid="stSidebar"] > div {
+    padding: 1.5rem 1.25rem !important;
+}
+
+/* ── Hide Streamlit Chrome ──────────────────── */
+/* Hide footer and decoration only */
+footer { display: none !important; }
+[data-testid="stDecoration"] { display: none !important; }
+
+/* Make header transparent — do NOT hide it or its children,
+   that breaks the sidebar toggle, github & share buttons */
+[data-testid="stHeader"] {
+    background-color: var(--bg-base) !important;
+    border-bottom: 1px solid var(--border) !important;
+}
+
+/* Style the toolbar buttons to match the dark theme */
+[data-testid="stHeader"] button {
+    color: var(--text-muted) !important;
+}
+[data-testid="stHeader"] button:hover {
+    color: var(--text-primary) !important;
+    background: var(--accent-soft) !important;
+}
+
+/* ── Sidebar Brand ──────────────────────────── */
+.sidebar-brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 4px;
+}
+
+.brand-icon {
+    font-size: 1.6rem;
+    color: var(--accent);
+    filter: drop-shadow(0 0 8px var(--accent-glow));
+    line-height: 1;
+}
+
+.brand-name {
+    font-family: var(--font-display);
+    font-size: 1.5rem;
+    color: var(--text-primary);
+    letter-spacing: 0.5px;
+}
+
+.sidebar-tagline {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-left: 2px;
+    margin-bottom: 0.5rem;
+}
+
+.sidebar-label {
+    font-size: 0.65rem !important;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--text-muted) !important;
+    margin-bottom: 6px !important;
+    font-family: var(--font-mono) !important;
+}
+
+/* ── Sidebar Radio ──────────────────────────── */
+[data-testid="stRadio"] label {
+    font-family: var(--font-body) !important;
+    font-size: 0.9rem !important;
+    color: var(--text-secondary) !important;
+    padding: 6px 10px !important;
+    border-radius: 6px !important;
+    transition: all 0.2s !important;
+}
+
+[data-testid="stRadio"] label:hover {
+    color: var(--text-primary) !important;
+    background: var(--accent-soft) !important;
+}
+
+[data-testid="stRadio"] [aria-checked="true"] + label,
+[data-testid="stRadio"] label[data-baseweb="radio"]:has(input:checked) {
+    color: var(--accent) !important;
+}
+
+/* ── Sidebar Stats ──────────────────────────── */
+.sidebar-stats {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    margin-top: 0.5rem;
+}
+
+.stat-item {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+}
+
+.stat-number {
+    font-family: var(--font-display);
+    font-size: 2rem;
+    color: var(--accent);
+    line-height: 1;
+}
+
+.stat-label {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.sidebar-footer {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    text-align: center;
+    margin-top: 1rem;
+}
+
+.sidebar-footer a {
+    color: var(--text-secondary);
+    text-decoration: none;
+}
+
+.sidebar-footer a:hover { color: var(--accent); }
+
+/* ── Page Header ────────────────────────────── */
+.page-header {
+    padding: 2rem 0 1.5rem 0;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 2rem;
+}
+
+.page-eyebrow {
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 8px;
+}
+
+.page-title {
+    font-family: var(--font-display);
+    font-size: 2.4rem;
+    color: var(--text-primary);
+    line-height: 1.15;
+    margin: 0;
+}
+
+.page-title em {
+    color: var(--accent);
+    font-style: italic;
+}
+
+.page-subtitle {
+    font-size: 0.95rem;
+    color: var(--text-secondary);
+    margin-top: 8px;
+    max-width: 600px;
+    line-height: 1.6;
+}
+
+/* ── Cards ──────────────────────────────────── */
+.x-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 1.5rem;
+    margin-bottom: 1rem;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.x-card:hover {
+    border-color: var(--border-accent);
+    box-shadow: 0 4px 24px rgba(0,0,0,0.3);
+}
+
+.x-card-accent {
+    border-left: 3px solid var(--accent);
+}
+
+/* ── Upload Zone ────────────────────────────── */
+.upload-zone {
+    border: 2px dashed var(--border-accent);
+    border-radius: var(--radius-lg);
+    padding: 3rem 2rem;
+    text-align: center;
+    background: var(--bg-card);
+    transition: all 0.3s;
+    cursor: pointer;
+}
+
+.upload-zone:hover {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+}
+
+.upload-icon {
+    font-size: 2.5rem;
+    margin-bottom: 12px;
+    display: block;
+}
+
+.upload-title {
+    font-family: var(--font-display);
+    font-size: 1.3rem;
+    color: var(--text-primary);
+    margin-bottom: 6px;
+}
+
+.upload-desc {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+}
+
+/* ── Paper Cards ────────────────────────────── */
+.paper-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1rem 1.25rem;
+    margin-bottom: 0.6rem;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    transition: all 0.2s;
+}
+
+.paper-card:hover {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+}
+
+.paper-icon {
+    font-size: 1.4rem;
+    flex-shrink: 0;
+}
+
+.paper-name {
+    font-weight: 500;
+    font-size: 0.9rem;
+    color: var(--text-primary);
+}
+
+.paper-meta {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+}
+
+.paper-status {
+    margin-left: auto;
+    font-size: 0.7rem;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-family: var(--font-mono);
+}
+
+.status-ready {
+    background: rgba(76, 201, 160, 0.1);
+    color: var(--green);
+    border: 1px solid rgba(76, 201, 160, 0.3);
+}
+
+.status-processing {
+    background: var(--accent-soft);
+    color: var(--accent);
+    border: 1px solid rgba(91, 127, 255, 0.3);
+}
+
+.status-error {
+    background: rgba(248, 113, 113, 0.1);
+    color: var(--red);
+    border: 1px solid rgba(248, 113, 113, 0.3);
+}
+
+/* ── Extraction Results Table ───────────────── */
+.results-table-wrap {
+    overflow-x: auto;
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border);
+    margin-bottom: 1.5rem;
+}
+
+.results-table-wrap table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.82rem;
+}
+
+.results-table-wrap th {
+    background: var(--bg-surface);
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    padding: 10px 14px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+}
+
+.results-table-wrap td {
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-secondary);
+    vertical-align: top;
+    line-height: 1.5;
+}
+
+.results-table-wrap tr:last-child td { border-bottom: none; }
+.results-table-wrap tr:hover td {
+    background: var(--bg-surface);
+    color: var(--text-primary);
+}
+
+.td-author {
+    font-weight: 600;
+    color: var(--text-primary) !important;
+    font-size: 0.85rem;
+    white-space: nowrap;
+}
+
+.td-method {
+    color: var(--accent) !important;
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+}
+
+.td-finding {
+    max-width: 260px;
+}
+
+/* ── Synthesis Blocks ───────────────────────── */
+.synth-block {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 1.5rem;
+    margin-bottom: 1rem;
+}
+
+.synth-block-title {
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.synth-block-icon {
+    font-size: 1rem;
+}
+
+.synth-item {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 10px;
+    font-size: 0.88rem;
+    color: var(--text-secondary);
+    line-height: 1.55;
+}
+
+.synth-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    flex-shrink: 0;
+    margin-top: 7px;
+}
+
+.synth-dot-gold { background: var(--gold); }
+.synth-dot-red { background: var(--red); }
+.synth-dot-green { background: var(--green); }
+
+/* ── Gap Detector ───────────────────────────── */
+.gap-tag {
+    display: inline-block;
+    background: var(--gold-soft);
+    border: 1px solid rgba(232, 201, 109, 0.25);
+    color: var(--gold);
+    font-size: 0.75rem;
+    font-family: var(--font-mono);
+    padding: 4px 12px;
+    border-radius: 20px;
+    margin: 4px;
+}
+
+/* ── Metric Chips ───────────────────────────── */
+.metric-row {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 1.5rem;
+}
+
+.metric-chip {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px 20px;
+    flex: 1;
+    min-width: 120px;
+    text-align: center;
+}
+
+.metric-chip-value {
+    font-family: var(--font-display);
+    font-size: 1.8rem;
+    color: var(--accent);
+    line-height: 1;
+    margin-bottom: 4px;
+}
+
+.metric-chip-label {
+    font-size: 0.7rem;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+}
+
+/* ── Buttons ────────────────────────────────── */
+.stButton > button {
+    background: var(--accent) !important;
+    color: #fff !important;
+    border: none !important;
+    border-radius: 8px !important;
+    font-family: var(--font-body) !important;
+    font-weight: 500 !important;
+    font-size: 0.9rem !important;
+    padding: 0.5rem 1.4rem !important;
+    transition: all 0.2s !important;
+    box-shadow: 0 2px 12px var(--accent-glow) !important;
+}
+
+.stButton > button:hover {
+    background: #7090ff !important;
+    box-shadow: 0 4px 20px var(--accent-glow) !important;
+    transform: translateY(-1px) !important;
+}
+
+.stButton > button[kind="secondary"] {
+    background: transparent !important;
+    border: 1px solid var(--border-accent) !important;
+    color: var(--text-secondary) !important;
+    box-shadow: none !important;
+}
+
+/* ── Inputs ─────────────────────────────────── */
+.stTextInput input, .stSelectbox select, [data-baseweb="select"] {
+    background: var(--bg-surface) !important;
+    border: 1px solid var(--border) !important;
+    color: var(--text-primary) !important;
+    border-radius: 8px !important;
+    font-family: var(--font-body) !important;
+}
+
+/* ── File Uploader ──────────────────────────── */
+[data-testid="stFileUploader"] {
+    background: var(--bg-card) !important;
+    border: 2px dashed var(--border-accent) !important;
+    border-radius: var(--radius-lg) !important;
+    padding: 1rem !important;
+}
+
+[data-testid="stFileUploader"]:hover {
+    border-color: var(--accent) !important;
+}
+
+/* ── Progress / Spinner ─────────────────────── */
+.stProgress > div > div {
+    background: var(--accent) !important;
+}
+
+/* ── Tabs ───────────────────────────────────── */
+.stTabs [data-baseweb="tab-list"] {
+    background: transparent !important;
+    border-bottom: 1px solid var(--border) !important;
+    gap: 0 !important;
+}
+
+.stTabs [data-baseweb="tab"] {
+    background: transparent !important;
+    color: var(--text-muted) !important;
+    font-family: var(--font-mono) !important;
+    font-size: 0.75rem !important;
+    letter-spacing: 1px !important;
+    padding: 10px 20px !important;
+    border: none !important;
+    border-bottom: 2px solid transparent !important;
+}
+
+.stTabs [aria-selected="true"] {
+    color: var(--accent) !important;
+    border-bottom-color: var(--accent) !important;
+}
+
+/* ── DataFrame ──────────────────────────────── */
+[data-testid="stDataFrame"] {
+    border: 1px solid var(--border) !important;
+    border-radius: var(--radius) !important;
+}
+
+/* ── Expander ───────────────────────────────── */
+.streamlit-expanderHeader {
+    background: var(--bg-card) !important;
+    color: var(--text-secondary) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: var(--radius) !important;
+    font-family: var(--font-mono) !important;
+    font-size: 0.8rem !important;
+}
+
+/* ── Toast / Alerts ─────────────────────────── */
+[data-testid="stAlert"] {
+    background: var(--bg-card) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: var(--radius) !important;
+    color: var(--text-secondary) !important;
+}
+
+/* ── Horizontal Rule ────────────────────────── */
+hr {
+    border-color: var(--border) !important;
+    margin: 1.5rem 0 !important;
+}
+
+/* ── Scrollbar ──────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--bg-base); }
+::-webkit-scrollbar-thumb { background: var(--border-accent); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--accent); }
+
+/* ── Export Cards ───────────────────────────── */
+.export-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 1.5rem;
+    text-align: center;
+    transition: all 0.2s;
+    cursor: pointer;
+}
+
+.export-card:hover {
+    border-color: var(--accent);
+    box-shadow: 0 0 20px var(--accent-glow);
+}
+
+.export-icon { font-size: 2rem; margin-bottom: 8px; display: block; }
+.export-name { font-weight: 600; font-size: 0.95rem; color: var(--text-primary); }
+.export-desc { font-size: 0.78rem; color: var(--text-muted); margin-top: 4px; }
+
+/* ── Loading Shimmer ────────────────────────── */
+@keyframes shimmer {
+    0% { background-position: -1000px 0; }
+    100% { background-position: 1000px 0; }
+}
+
+.shimmer {
+    background: linear-gradient(90deg, var(--bg-card) 25%, var(--bg-surface) 50%, var(--bg-card) 75%);
+    background-size: 1000px 100%;
+    animation: shimmer 2s infinite linear;
+    border-radius: 6px;
+    height: 16px;
+    margin: 6px 0;
+}
+
+/* ── Citation Tag ───────────────────────────── */
+.citation-tag {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    background: var(--accent-soft);
+    color: var(--accent);
+    padding: 2px 8px;
+    border-radius: 4px;
+    display: inline-block;
+}
+
+/* ── Empty State ────────────────────────────── */
+.empty-state {
+    text-align: center;
+    padding: 4rem 2rem;
+    color: var(--text-muted);
+}
+
+.empty-state-icon { font-size: 3rem; margin-bottom: 16px; opacity: 0.5; }
+.empty-state-title {
+    font-family: var(--font-display);
+    font-size: 1.4rem;
+    color: var(--text-secondary);
+    margin-bottom: 8px;
+}
+.empty-state-desc { font-size: 0.88rem; line-height: 1.6; }
