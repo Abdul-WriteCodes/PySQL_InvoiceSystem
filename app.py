@@ -501,10 +501,13 @@ REQUIRED STRUCTURE:
 {structure}
 {rubric_block}
 
-TARGET WORD COUNT: {word_count} words (aim within ±5%)
+TARGET WORD COUNT: {word_count} words
+IMPORTANT: The {word_count}-word count applies strictly to the BODY of the write-up only.
+The References list at the end is excluded from the word count and should be as complete as necessary.
+Aim to land within ±5% of {word_count} words for the body content alone.
 {source_block}
 
-Write the complete academic piece now. Follow the structure exactly. Embed Harvard in-text citations drawn only from the provided reference materials. End with a properly formatted Harvard reference list titled 'References'."""
+Write the complete academic piece now. Follow the structure exactly. Embed Harvard in-text citations drawn only from the provided reference materials. End with a properly formatted Harvard reference list titled 'References'. Do not use markdown symbols such as ** or ## in your output — use plain prose with clear paragraph breaks only."""
 
     response = openai_client.chat.completions.create(
         model=GPT_WRITER,
@@ -575,6 +578,25 @@ Return pure JSON only."""
 # ─────────────────────────────────────────────
 #  SIMILARITY CHECKS
 # ─────────────────────────────────────────────
+
+def clean_output_text(text: str) -> str:
+    """Strip markdown symbols from AI output for clean plain rendering."""
+    # Remove bold/italic markers
+    text = re.sub(r'\*{1,3}(.*?)\*{1,3}', r'\1', text)
+    # Remove heading hashes but keep the text
+    text = re.sub(r'^#{1,6}\s+', '', text, flags=re.MULTILINE)
+    # Remove underline-style markdown
+    text = re.sub(r'__(.*?)__', r'\1', text)
+    # Clean up excessive blank lines (max 2)
+    text = re.sub(r'\n{3,}', '\n\n', text)
+    return text.strip()
+
+def count_body_words(output_text: str) -> int:
+    """Count words in body only — exclude the References section."""
+    # Split off everything from 'References' heading onward
+    ref_pattern = re.split(r'\n(?:References|REFERENCES|Bibliography|BIBLIOGRAPHY)\s*\n', output_text, maxsplit=1)
+    body = ref_pattern[0] if len(ref_pattern) > 1 else output_text
+    return len(body.split())
 
 def check_source_similarity(output_text: str, source_texts: list) -> float:
     if not source_texts:
@@ -678,6 +700,7 @@ def inject_css():
 
     html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
 
+    /* ── Header ── */
     .agent43-header {
         background: linear-gradient(135deg, #0f0f23 0%, #1a1a3e 50%, #0d1b2a 100%);
         padding: 2rem 2.5rem 1.5rem;
@@ -698,6 +721,24 @@ def inject_css():
         font-size: 0.9rem;
     }
 
+    /* ── Section label ── */
+    .section-label {
+        font-size: 0.7rem;
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: #64748b;
+        margin-bottom: 0.75rem;
+        margin-top: 0.25rem;
+    }
+
+    .output-meta {
+        font-size: 0.8rem;
+        color: #94a3b8;
+        margin-bottom: 0.75rem;
+    }
+
+    /* ── Agent card (sidebar) ── */
     .agent-card {
         background: linear-gradient(135deg, #1e1b4b 0%, #1e3a5f 100%);
         border: 1px solid rgba(99,102,241,0.4);
@@ -708,6 +749,7 @@ def inject_css():
     .agent-card h4 { color: #c7d2fe; margin: 0 0 0.25rem; font-size: 0.95rem; }
     .agent-card p  { color: #94a3b8; margin: 0; font-size: 0.8rem; }
 
+    /* ── Dispatcher card ── */
     .dispatch-card {
         background: linear-gradient(135deg, #064e3b 0%, #065f46 100%);
         border: 1px solid rgba(52,211,153,0.4);
@@ -715,31 +757,85 @@ def inject_css():
         padding: 1.25rem 1.5rem;
         margin: 1rem 0;
     }
-    .dispatch-card h3 { color: #6ee7b7; margin: 0 0 0.5rem; }
-    .dispatch-card p  { color: #a7f3d0; margin: 0.25rem 0; font-size: 0.88rem; }
+    .dispatch-card h3 { color: #6ee7b7; margin: 0 0 0.5rem; font-size: 1.1rem; }
+    .dispatch-card p  { color: #a7f3d0; margin: 0.25rem 0; font-size: 0.88rem; line-height: 1.6; }
 
-    .report-card {
-        background: #0f172a;
-        border: 1px solid rgba(148,163,184,0.2);
-        border-radius: 10px;
-        padding: 1.5rem;
-        margin: 1rem 0;
-        font-family: 'Courier New', monospace;
-        color: #e2e8f0;
-        font-size: 0.85rem;
-        line-height: 1.7;
-    }
-
+    /* ── Writing output ── */
     .writing-output {
-        background: #fefefe;
+        background: #fafafa;
         border: 1px solid #e5e7eb;
         border-radius: 10px;
-        padding: 2rem;
+        padding: 2rem 2.5rem;
         color: #1f2937;
-        line-height: 1.8;
+    }
+    .write-heading {
+        font-size: 1rem;
+        font-weight: 600;
+        color: #111827;
+        margin: 1.5rem 0 0.5rem;
+        padding-bottom: 0.25rem;
+        border-bottom: 1px solid #e5e7eb;
+    }
+    .write-para {
         font-size: 0.93rem;
+        line-height: 1.85;
+        color: #374151;
+        margin: 0 0 1rem;
+        text-align: justify;
     }
 
+    /* ── Assessment grid ── */
+    .assess-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1rem;
+        margin: 1rem 0;
+    }
+    .assess-card {
+        background: #0f172a;
+        border: 1px solid rgba(148,163,184,0.15);
+        border-radius: 12px;
+        padding: 1.25rem 1.5rem;
+    }
+    .assess-card-title {
+        font-size: 0.7rem;
+        font-weight: 700;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: #64748b;
+        margin-bottom: 0.6rem;
+    }
+    .assess-score {
+        font-size: 2rem;
+        font-weight: 700;
+        letter-spacing: -1px;
+        margin-bottom: 0.4rem;
+    }
+    .assess-label {
+        display: inline-block;
+        font-size: 0.75rem;
+        font-weight: 600;
+        padding: 0.2rem 0.75rem;
+        border-radius: 999px;
+        margin-bottom: 0.75rem;
+    }
+    .assess-desc {
+        font-size: 0.8rem;
+        color: #94a3b8;
+        line-height: 1.6;
+    }
+    .flag-pill {
+        display: inline-block;
+        background: #1e293b;
+        color: #f59e0b;
+        border: 1px solid rgba(245,158,11,0.3);
+        border-radius: 6px;
+        padding: 0.15rem 0.5rem;
+        font-size: 0.72rem;
+        margin: 0.15rem 0.15rem 0 0;
+    }
+
+    /* ── Buttons ── */
     div[data-testid="stButton"] > button {
         background: linear-gradient(135deg, #4f46e5, #7c3aed);
         color: white;
@@ -751,6 +847,7 @@ def inject_css():
     }
     div[data-testid="stButton"] > button:hover { opacity: 0.88; }
 
+    /* ── Cost pill (sidebar) ── */
     .cost-pill {
         display: inline-block;
         background: #1e293b;
@@ -955,36 +1052,52 @@ def page_write():
         source_texts = st.session_state.get("last_source_texts", [])
         structure    = st.session_state.get("last_structure", "")
 
-        st.markdown("---\n### 📄 Generated Write-Up")
-        actual_words = len(output.split())
-        st.caption(f"~{actual_words:,} words · {agent_name} · {discipline}")
+        # Clean output — strip markdown symbols
+        cleaned_output = clean_output_text(output)
+        body_words     = count_body_words(cleaned_output)
+        total_words    = len(cleaned_output.split())
+
+        st.markdown("---")
+        st.markdown(
+            f'<div class="section-label">Generated Write-Up</div>',
+            unsafe_allow_html=True
+        )
+        st.markdown(
+            f'<div class="output-meta">{agent_name} &nbsp;·&nbsp; {discipline} &nbsp;·&nbsp; '
+            f'Body: {body_words:,} words &nbsp;·&nbsp; Total (inc. references): {total_words:,} words</div>',
+            unsafe_allow_html=True
+        )
 
         with st.expander("Read Write-Up", expanded=True):
-            st.markdown(f'<div class="writing-output">{output.replace(chr(10), "<br>")}</div>',
-                        unsafe_allow_html=True)
+            # Render paragraphs cleanly — no markdown bleed-through
+            paragraphs = [p.strip() for p in cleaned_output.split("\n\n") if p.strip()]
+            rendered = ""
+            for para in paragraphs:
+                # Treat short lines (likely headings) differently
+                if len(para) < 100 and not para.endswith("."):
+                    rendered += f'<p class="write-heading">{para}</p>'
+                else:
+                    rendered += f'<p class="write-para">{para}</p>'
+            st.markdown(f'<div class="writing-output">{rendered}</div>', unsafe_allow_html=True)
 
         # Assessment
-        st.markdown("---\n### 📊 Assessment")
+        st.markdown("---")
+        st.markdown('<div class="section-label">Assessment Report</div>', unsafe_allow_html=True)
 
         if not st.session_state.get("assessment_done"):
             if st.button("🔍 Run Assessment", use_container_width=False):
                 with st.spinner("Running similarity checks and risk assessment..."):
-                    # Source similarity
-                    src_sim  = check_source_similarity(output, source_texts) if source_texts else None
-                    # History similarity
-                    hist_sim = check_history_similarity(output)
-                    # Risk
-                    risk     = run_risk_assessment(output)
-                    # Save
-                    writing_id = save_writing(
+                    src_sim    = check_source_similarity(cleaned_output, source_texts) if source_texts else None
+                    hist_sim   = check_history_similarity(cleaned_output)
+                    risk       = run_risk_assessment(cleaned_output)
+                    save_writing(
                         agent_name, discipline,
                         st.session_state["last_context"],
-                        actual_words, output,
+                        body_words, cleaned_output,
                         st.session_state["last_tokens_in"],
                         st.session_state["last_tokens_out"],
                         st.session_state["last_cost"]
                     )
-
                 st.session_state["assess_src_sim"]  = src_sim
                 st.session_state["assess_hist_sim"] = hist_sim
                 st.session_state["assess_risk"]     = risk
@@ -999,43 +1112,68 @@ def page_write():
             cost     = st.session_state["assess_cost"]
             total    = get_total_cost()
 
-            risk_emoji = {"Low": "🟢", "Medium": "🟡", "High": "🔴"}.get(risk.get("risk_level", ""), "⚪")
+            risk_level = risk.get("risk_level", "Unknown")
+            risk_score = risk.get("score", 0)
+            risk_color = {"Low": "#10b981", "Medium": "#f59e0b", "High": "#ef4444"}.get(risk_level, "#94a3b8")
+            risk_bg    = {"Low": "#022c22", "Medium": "#2d1a00", "High": "#2d0000"}.get(risk_level, "#1e293b")
 
-            src_label, _ = sim_band(src_sim)  if src_sim  is not None else ("N/A — no sources uploaded", "grey")
-            hist_label, _ = sim_band(hist_sim)
+            src_pct   = f"{src_sim*100:.1f}%" if src_sim is not None else "N/A"
+            src_label = sim_band(src_sim)[0] if src_sim is not None else "No sources uploaded"
+            src_color = sim_band(src_sim)[1] if src_sim is not None else "grey"
+            src_hex   = {"green": "#10b981", "orange": "#f59e0b", "red": "#ef4444", "grey": "#94a3b8"}.get(src_color, "#94a3b8")
+            src_bg    = {"green": "#022c22", "orange": "#2d1a00", "red": "#2d0000", "grey": "#1e293b"}.get(src_color, "#1e293b")
 
-            flags_str = "\n  ".join(risk.get("flags", [])) or "None"
+            hist_pct   = f"{hist_sim*100:.1f}%"
+            hist_label = sim_band(hist_sim)[0]
+            hist_color = sim_band(hist_sim)[1]
+            hist_hex   = {"green": "#10b981", "orange": "#f59e0b", "red": "#ef4444"}.get(hist_color, "#94a3b8")
+            hist_bg    = {"green": "#022c22", "orange": "#2d1a00", "red": "#2d0000"}.get(hist_color, "#1e293b")
 
-            report = f"""AGENT43 ASSESSMENT REPORT
-{'─'*50}
-Agent:          {agent_name}
-Discipline:     {discipline}
-Word Count:     ~{actual_words:,} words
-{'─'*50}
+            flags_html = ""
+            for f in risk.get("flags", []):
+                flags_html += f'<span class="flag-pill">{f}</span> '
 
-SIMILARITY CHECKS
-├── vs. Source Materials    {f"{src_sim*100:.1f}%  {src_label}" if src_sim is not None else "N/A — no sources uploaded"}
-└── vs. Your Past Work      {hist_sim*100:.1f}%  {hist_label}
+            st.markdown(f"""
+            <div class="assess-grid">
 
-AI RISK ASSESSMENT
-├── Risk Level              {risk.get('risk_level', 'Unknown')}  {risk_emoji}
-├── Risk Score              {risk.get('score', 0)}/100
-├── Flags:
-  {flags_str}
-└── Summary: {risk.get('summary', '')}
+              <div class="assess-card">
+                <div class="assess-card-title">Similarity vs Source Materials</div>
+                <div class="assess-score" style="color:{src_hex};">{src_pct}</div>
+                <div class="assess-label" style="background:{src_bg}; color:{src_hex};">{src_label}</div>
+                <div class="assess-desc">Measures how much the write-up overlaps with your uploaded references. A lower score indicates genuine synthesis rather than paraphrase.</div>
+              </div>
 
-COST
-├── This generation         ${cost:.5f} USD
-└── Cumulative total        ${total:.4f} USD
-{'─'*50}"""
+              <div class="assess-card">
+                <div class="assess-card-title">Similarity vs Past Work</div>
+                <div class="assess-score" style="color:{hist_hex};">{hist_pct}</div>
+                <div class="assess-label" style="background:{hist_bg}; color:{hist_hex};">{hist_label}</div>
+                <div class="assess-desc">Compares this write-up against all your previous submissions. Catches recycled arguments across different assignments.</div>
+              </div>
 
-            st.markdown(f'<div class="report-card"><pre>{report}</pre></div>', unsafe_allow_html=True)
+              <div class="assess-card">
+                <div class="assess-card-title">AI Detection Risk</div>
+                <div class="assess-score" style="color:{risk_color};">{risk_score}/100</div>
+                <div class="assess-label" style="background:{risk_bg}; color:{risk_color};">{risk_level} Risk</div>
+                <div class="assess-desc">{risk.get("summary", "")}</div>
+                <div style="margin-top:0.75rem;">{flags_html}</div>
+              </div>
+
+              <div class="assess-card">
+                <div class="assess-card-title">Cost</div>
+                <div class="assess-score" style="color:#38bdf8;">${cost:.4f}</div>
+                <div class="assess-label" style="background:#0c2233; color:#38bdf8;">This generation</div>
+                <div class="assess-desc">Cumulative total across all sessions: <strong style="color:#e2e8f0;">${total:.4f} USD</strong></div>
+              </div>
+
+            </div>
+            """, unsafe_allow_html=True)
 
             # Export
-            st.markdown("---\n### 📥 Export")
+            st.markdown("---")
+            st.markdown('<div class="section-label">Export</div>', unsafe_allow_html=True)
             col1, col2 = st.columns(2)
             with col1:
-                docx_bytes = export_docx(output, agent_name, discipline, structure)
+                docx_bytes = export_docx(cleaned_output, agent_name, discipline, structure)
                 st.download_button(
                     "📄 Download DOCX",
                     data=docx_bytes,
@@ -1046,7 +1184,7 @@ COST
             with col2:
                 st.download_button(
                     "📋 Download TXT",
-                    data=output.encode("utf-8"),
+                    data=cleaned_output.encode("utf-8"),
                     file_name=f"agent43_{agent_name.replace(' ','_').lower()}_{datetime.date.today()}.txt",
                     mime="text/plain",
                     use_container_width=True
@@ -1089,21 +1227,22 @@ def page_dashboard():
     st.markdown("---")
 
     if writings:
-        st.markdown("### Agent Usage")
+        st.markdown("Agent Usage")
         agent_counts = {}
         for w in writings:
             a = w.get("agent_name", "Unknown")
             agent_counts[a] = agent_counts.get(a, 0) + 1
         for agent, count in sorted(agent_counts.items(), key=lambda x: -x[1]):
-            st.markdown(f"**{agent}** — {count} write-up{'s' if count != 1 else ''}")
+            st.markdown(f'<div class="assess-desc" style="margin-bottom:0.4rem;">{agent} — {count} write-up{"s" if count != 1 else ""}</div>', unsafe_allow_html=True)
 
-        st.markdown("---\n### Cost by Feature")
+        st.markdown("---")
+        st.markdown("Cost by Feature")
         feature_costs = {}
         for r in costs:
             f = r.get("feature", "unknown")
             feature_costs[f] = feature_costs.get(f, 0) + float(r["cost_usd"])
         for feat, amt in sorted(feature_costs.items(), key=lambda x: -x[1]):
-            st.markdown(f"**{feat}** — ${amt:.5f}")
+            st.markdown(f'<div class="assess-desc" style="margin-bottom:0.4rem;">{feat} — ${amt:.5f}</div>', unsafe_allow_html=True)
     else:
         st.info("No write-ups yet. Generate your first one in the Write tab.")
 
@@ -1130,12 +1269,13 @@ def page_history():
         disc    = w.get("discipline", "")
         wc      = w.get("word_count", 0)
         cost    = float(w.get("cost_usd", 0))
-        preview = (w.get("output_text", "")[:200] + "...") if w.get("output_text") else ""
+        raw_preview = (w.get("output_text", "")[:300] + "...") if w.get("output_text") else ""
+        preview = clean_output_text(raw_preview)
         ctx     = w.get("context", "")[:120]
 
-        with st.expander(f"{created} · {agent} · {disc} · ~{wc:,} words · ${cost:.5f}"):
-            st.caption(f"**Brief:** {ctx}")
-            st.markdown(preview)
+        with st.expander(f"{created}  ·  {agent}  ·  {disc}  ·  {wc:,} words  ·  ${cost:.5f}"):
+            st.caption(f"Brief: {ctx}")
+            st.markdown(f'<div class="write-para">{preview}</div>', unsafe_allow_html=True)
             docx_bytes = export_docx(w.get("output_text", ""), agent, disc, "")
             st.download_button(
                 "📄 Re-download DOCX",
