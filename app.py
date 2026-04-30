@@ -489,25 +489,38 @@ def run_writer(agent_name: str, context: str, structure: str,
         for i, txt in enumerate(source_texts, 1):
             source_block += f"\n[Source {i}]\n{txt[:6000]}\n"
         source_block += "\n--- END OF REFERENCE MATERIALS ---\n"
-        source_block += "\nIMPORTANT: You must cite ONLY from the sources above. Do not introduce any author, theory, or reference not present in the provided materials."
+        source_block += "\nCITATION RULE: Cite ONLY from the sources above. Do not introduce any author, theory, or reference not present in the provided materials."
 
     rubric_block = f"\n\nMARKING RUBRIC:\n{rubric}" if rubric.strip() else ""
 
-    user_prompt = f"""ASSESSMENT BRIEF
-================
-{context}
+    # Academic prose averages ~1.35 tokens/word. Add 800 tokens for references + buffer.
+    required_output_tokens = max(2048, min(16000, int(word_count * 1.5) + 800))
+    low_wc  = int(word_count * 0.97)
+    high_wc = int(word_count * 1.03)
 
-REQUIRED STRUCTURE:
-{structure}
-{rubric_block}
-
-TARGET WORD COUNT: {word_count} words
-IMPORTANT: The {word_count}-word count applies strictly to the BODY of the write-up only.
-The References list at the end is excluded from the word count and should be as complete as necessary.
-Aim to land within ±5% of {word_count} words for the body content alone.
-{source_block}
-
-Write the complete academic piece now. Follow the structure exactly. Embed Harvard in-text citations drawn only from the provided reference materials. End with a properly formatted Harvard reference list titled 'References'. Do not use markdown symbols such as ** or ## in your output — use plain prose with clear paragraph breaks only."""
+    user_prompt = (
+        "ASSESSMENT BRIEF\n"
+        "================\n"
+        f"{context}\n\n"
+        "REQUIRED STRUCTURE:\n"
+        f"{structure}\n"
+        f"{rubric_block}\n\n"
+        "WORD COUNT REQUIREMENT — NON-NEGOTIABLE:\n"
+        f"- The body of this write-up must be {word_count} words, within ±3% ({low_wc}–{high_wc} words).\n"
+        "- Word count covers the BODY only — everything before the References section.\n"
+        "- References are NOT counted and must be complete.\n"
+        f"- Do NOT stop before reaching {word_count} body words. If you feel done before that, you have not argued deeply enough.\n"
+        "- Expand every argument: apply theory, critique its limits, compare competing views, cite evidence.\n\n"
+        "DEPTH REQUIREMENT:\n"
+        "- Every paragraph must advance an argument — no description, no padding, no empty transitions.\n"
+        "- Engage critically with theory: explain it, apply it, challenge it, compare alternatives.\n"
+        "- Support every major claim with citations from the source materials.\n"
+        "- Write as a first-class postgraduate submission — substantive, critical, intellectually rigorous.\n"
+        f"{source_block}\n\n"
+        "Write the complete academic piece now. Follow the structure exactly. "
+        "Do NOT use markdown symbols (**, ##, *, __) — plain prose and clear paragraph breaks only. "
+        "End with a full Harvard reference list titled 'References'."
+    )
 
     response = openai_client.chat.completions.create(
         model=GPT_WRITER,
@@ -516,7 +529,7 @@ Write the complete academic piece now. Follow the structure exactly. Embed Harva
             {"role": "user",   "content": user_prompt}
         ],
         temperature=0.7,
-        max_tokens=4096,
+        max_tokens=required_output_tokens,
         stream=False
     )
 
@@ -525,6 +538,45 @@ Write the complete academic piece now. Follow the structure exactly. Embed Harva
     tokens_out = response.usage.completion_tokens
     cost       = calc_cost(GPT_WRITER, tokens_in, tokens_out)
     log_cost("writing", GPT_WRITER, tokens_in, tokens_out, cost)
+
+    # Continuation pass if body is still under 80% of target
+    body_wc = len(re.split(
+        r'\nReferences\s*\n|\nREFERENCES\s*\n|\nBibliography\s*\n',
+        output, maxsplit=1)[0].split())
+
+    if body_wc < int(word_count * 0.80):
+        shortfall = word_count - body_wc
+        cont_tokens = max(1500, min(8000, int(shortfall * 1.6) + 600))
+        continuation_prompt = (
+            f"The write-up body is currently approximately {body_wc} words but must reach {word_count} words.\n"
+            f"You must add approximately {shortfall} more words of body content.\n"
+            "- Do NOT repeat or summarise what was already written.\n"
+            "- Continue the arguments with the same critical depth and engagement.\n"
+            "- Expand sections that were too brief; deepen the theoretical analysis.\n"
+            "- After the continuation, reproduce the complete References list.\n"
+            "- No markdown symbols.\n\n"
+            "Current write-up:\n---\n"
+            f"{output}\n---\n\nContinue now:"
+        )
+        cont_response = openai_client.chat.completions.create(
+            model=GPT_WRITER,
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user",   "content": continuation_prompt}
+            ],
+            temperature=0.7,
+            max_tokens=cont_tokens,
+            stream=False
+        )
+        cont_out  = cont_response.choices[0].message.content
+        cont_in   = cont_response.usage.prompt_tokens
+        cont_tok  = cont_response.usage.completion_tokens
+        cont_cost = calc_cost(GPT_WRITER, cont_in, cont_tok)
+        log_cost("writing_continuation", GPT_WRITER, cont_in, cont_tok, cont_cost)
+        output     = cont_out
+        tokens_in  += cont_in
+        tokens_out += cont_tok
+        cost       += cont_cost
 
     return output, tokens_in, tokens_out, cost
 
