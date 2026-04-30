@@ -1,5 +1,5 @@
 streamlit>=1.32.0
-openai>=1.30.0
+openai>=1.13.0
 supabase>=2.4.0
 tiktoken>=0.7.0
 numpy>=1.26.0
