@@ -915,18 +915,22 @@ def _write_sections(agent_name: str, context: str, rubric: str,
         )
 
         if stream_container is not None:
-            # ── Streaming path ─────────────────────────────────────
+            # ── Streaming path (compatible with openai>=1.0) ────────
             section_buf = ""
-            with openai_client.chat.completions.stream(
+            t_in, t_out = 0, 0
+            stream_resp = openai_client.chat.completions.create(
                 model=GPT_WRITER,
                 messages=[{"role": "system", "content": system},
                           {"role": "user",   "content": user}],
                 temperature=0.7,
                 max_tokens=out_tokens,
-            ) as stream:
-                for text_delta in stream.text_stream:
-                    section_buf += text_delta
-                    # Re-render everything written so far + live section
+                stream=True,
+                stream_options={"include_usage": True},
+            )
+            for chunk in stream_resp:
+                delta = chunk.choices[0].delta.content if chunk.choices else None
+                if delta:
+                    section_buf += delta
                     live_display = streamed_so_far + section_buf
                     paragraphs = [p.strip() for p in live_display.split("\n\n") if p.strip()]
                     rendered = ""
@@ -939,10 +943,10 @@ def _write_sections(agent_name: str, context: str, rubric: str,
                         f'<div class="writing-output">{rendered}</div>',
                         unsafe_allow_html=True
                     )
-                # Capture token usage from final message
-                final_msg = stream.get_final_message()
-                t_in  = final_msg.usage.input_tokens
-                t_out = final_msg.usage.output_tokens
+                # Capture usage from the final chunk
+                if hasattr(chunk, "usage") and chunk.usage:
+                    t_in  = chunk.usage.prompt_tokens
+                    t_out = chunk.usage.completion_tokens
 
             out = section_buf
 
@@ -976,17 +980,22 @@ CITATION INDEX:
 Return ONLY the reference list — nothing else."""
 
     if stream_container is not None:
-        # Stream the reference list too
+        # Stream the reference list too (compatible with openai>=1.0)
         ref_buf = ""
-        with openai_client.chat.completions.stream(
+        t_in, t_out = 0, 0
+        stream_resp = openai_client.chat.completions.create(
             model=GPT_FAST,
             messages=[{"role": "system", "content": system},
                       {"role": "user",   "content": ref_user}],
             temperature=0.2,
             max_tokens=1000,
-        ) as stream:
-            for text_delta in stream.text_stream:
-                ref_buf += text_delta
+            stream=True,
+            stream_options={"include_usage": True},
+        )
+        for chunk in stream_resp:
+            delta = chunk.choices[0].delta.content if chunk.choices else None
+            if delta:
+                ref_buf += delta
                 live_display = streamed_so_far + ref_buf
                 paragraphs = [p.strip() for p in live_display.split("\n\n") if p.strip()]
                 rendered = ""
@@ -999,9 +1008,9 @@ Return ONLY the reference list — nothing else."""
                     f'<div class="writing-output">{rendered}</div>',
                     unsafe_allow_html=True
                 )
-            final_msg = stream.get_final_message()
-            t_in  = final_msg.usage.input_tokens
-            t_out = final_msg.usage.output_tokens
+            if hasattr(chunk, "usage") and chunk.usage:
+                t_in  = chunk.usage.prompt_tokens
+                t_out = chunk.usage.completion_tokens
 
         c = calc_cost(GPT_FAST, t_in, t_out)
         log_cost("reference_list", GPT_FAST, t_in, t_out, c)
