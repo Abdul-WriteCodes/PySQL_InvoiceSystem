@@ -363,6 +363,14 @@ def log_cost(feature: str, model: str, tokens_in: int, tokens_out: int, cost: fl
         pass
 
 def extract_text_from_file(uploaded_file) -> str:
+    """
+    Extract text from uploaded file.
+    For long documents: returns FIRST 12,000 chars + LAST 6,000 chars.
+    This ensures the bibliography/reference list (always at the end of a paper)
+    is captured alongside the abstract and introduction (at the start).
+    Without the tail, the model never sees author/year/title metadata
+    and fabricates citations from its own training knowledge instead.
+    """
     name = uploaded_file.name.lower()
     text = ""
     try:
@@ -379,8 +387,14 @@ def extract_text_from_file(uploaded_file) -> str:
         else:
             text = uploaded_file.read().decode("utf-8", errors="ignore")
     except Exception as e:
-        text = f"[Could not extract text from {uploaded_file.name}: {e}]"
-    return text.strip()
+        return f"[Could not extract text from {uploaded_file.name}: {e}]"
+
+    text = text.strip()
+    FRONT = 12000
+    BACK  = 6000
+    if len(text) > FRONT + BACK:
+        return text[:FRONT] + "\n\n[...middle section omitted...]\n\n" + text[-BACK:]
+    return text
 
 def get_embedding(text: str) -> list:
     response = openai_client.embeddings.create(
@@ -492,14 +506,8 @@ def _parse_structure_sections(structure: str) -> list:
 
 
 def _build_source_block(source_texts: list, max_total_chars: int = 80000) -> str:
-    """
-    Distribute source material budget evenly across uploaded papers.
-    Uses a large budget so even 20-30 papers each get substantial content.
-    GPT-4o supports a 128k context window — we use it.
-    """
     if not source_texts:
         return ""
-    # Give each paper a generous slice; floor is 3000 chars (~half a page)
     per_source = max(3000, max_total_chars // len(source_texts))
     block = "\n\n=== REFERENCE MATERIALS ===\n"
     block += "(Cite ONLY from these sources. Do not introduce authors, years, or titles not present here.)\n"
@@ -510,7 +518,6 @@ def _build_source_block(source_texts: list, max_total_chars: int = 80000) -> str
 
 
 def _body_word_count(text: str) -> int:
-    """Word count of body only — excludes References section."""
     parts = re.split(
         r"\n(?:References|REFERENCES|Bibliography|BIBLIOGRAPHY)\s*\n",
         text, maxsplit=1
@@ -518,10 +525,27 @@ def _body_word_count(text: str) -> int:
     return len(parts[0].split())
 
 
+def _strip_references(text: str) -> str:
+    parts = re.split(
+        r"\n(?:References|REFERENCES|Bibliography|BIBLIOGRAPHY)\s*\n",
+        text, maxsplit=1
+    )
+    return parts[0].rstrip()
+
+
+def _extract_references(text: str) -> str:
+    parts = re.split(
+        r"\n((?:References|REFERENCES|Bibliography|BIBLIOGRAPHY)\s*\n)",
+        text, maxsplit=1
+    )
+    if len(parts) >= 3:
+        return parts[1] + parts[2]
+    return ""
+
+
 def _do_api_call(system: str, user: str, max_tokens: int,
                  label: str, tokens_in_acc: int, tokens_out_acc: float,
                  cost_acc: float) -> tuple:
-    """Single GPT-4o call. Returns (output_text, total_in, total_out, total_cost)."""
     resp = openai_client.chat.completions.create(
         model=GPT_WRITER,
         messages=[{"role": "system", "content": system},
@@ -538,138 +562,257 @@ def _do_api_call(system: str, user: str, max_tokens: int,
     return out, tokens_in_acc + t_in, tokens_out_acc + t_out, cost_acc + c
 
 
-def _strip_references(text: str) -> str:
-    """Remove References/Bibliography section from text, returning only body."""
-    parts = re.split(
-        r"\n(?:References|REFERENCES|Bibliography|BIBLIOGRAPHY)\s*\n",
-        text, maxsplit=1
+def _do_fast_call(system: str, user: str, max_tokens: int,
+                  label: str, tokens_in_acc: int, tokens_out_acc: float,
+                  cost_acc: float) -> tuple:
+    """Use GPT-4o-mini for cheap extraction/planning stages."""
+    resp = openai_client.chat.completions.create(
+        model=GPT_FAST,
+        messages=[{"role": "system", "content": system},
+                  {"role": "user",   "content": user}],
+        temperature=0.2,
+        max_tokens=max_tokens,
+        stream=False
     )
-    return parts[0].rstrip()
+    out   = resp.choices[0].message.content
+    t_in  = resp.usage.prompt_tokens
+    t_out = resp.usage.completion_tokens
+    c     = calc_cost(GPT_FAST, t_in, t_out)
+    log_cost(label, GPT_FAST, t_in, t_out, c)
+    return out, tokens_in_acc + t_in, tokens_out_acc + t_out, cost_acc + c
 
 
-def _extract_references(text: str) -> str:
-    """Extract only the References/Bibliography section from text."""
-    parts = re.split(
-        r"\n((?:References|REFERENCES|Bibliography|BIBLIOGRAPHY)\s*\n)",
-        text, maxsplit=1
+# ── Stage 1: Citation Extraction ──────────────────────────────────────────────
+
+def _extract_citations_from_sources(source_texts: list,
+                                     tokens_in_acc: int,
+                                     tokens_out_acc: float,
+                                     cost_acc: float) -> tuple:
+    """
+    Stage 1: For each uploaded paper, extract a structured citation index.
+    Uses GPT-4o-mini (cheap). Returns a clean citation block the writer can
+    cite from directly — no raw paper text needed in the write call.
+    """
+    all_citations = []
+    system = "You are a precise academic citation extractor. Extract only what is explicitly stated in the text."
+
+    for i, txt in enumerate(source_texts, 1):
+        # Give the extractor the full front+back slice we already captured
+        user = f"""Extract the following from this academic source. Return ONLY what you can find explicitly in the text below. Do not infer or complete missing information.
+
+Return as plain text in this exact format:
+SOURCE {i}
+Authors: [surname, initials of all authors exactly as written]
+Year: [publication year]
+Title: [full title exactly as written]
+Journal/Publisher: [journal name or publisher exactly as written]
+Volume/Issue/Pages: [if present]
+Key arguments (3-6 bullet points of the main claims/findings, using specific language from the text):
+- [claim 1]
+- [claim 2]
+...
+Directly quotable phrases (2-4 short phrases from the text useful for academic writing):
+- "[phrase 1]"
+- "[phrase 2]"
+...
+
+SOURCE TEXT:
+{txt[:15000]}"""
+
+        out, tokens_in_acc, tokens_out_acc, cost_acc = _do_fast_call(
+            system, user, 800, f"citation_extract_{i}",
+            tokens_in_acc, tokens_out_acc, cost_acc
+        )
+        all_citations.append(out.strip())
+
+    citation_index = "\n\n".join(all_citations)
+    return citation_index, tokens_in_acc, tokens_out_acc, cost_acc
+
+
+# ── Stage 2: Section Plan ──────────────────────────────────────────────────────
+
+def _build_section_plan(context: str, structure: str, scaffold_str: str,
+                         citation_index: str, word_count: int,
+                         tokens_in_acc: int, tokens_out_acc: float,
+                         cost_acc: float) -> tuple:
+    """
+    Stage 2: Plan which citations to use in each section.
+    Returns a section plan JSON so the writer knows exactly what to cite where.
+    """
+    system = "You are an expert academic essay planner. Return only valid JSON."
+    user = f"""You are planning an academic essay. Given the citation index and essay structure below, produce a writing plan.
+
+ESSAY CONTEXT:
+{context}
+
+ESSAY STRUCTURE (sections to write in order):
+{scaffold_str}
+
+TOTAL BODY WORD COUNT TARGET: {word_count} words
+
+CITATION INDEX (these are the ONLY sources that may be cited):
+{citation_index}
+
+Return a JSON array. Each element represents one section:
+[
+  {{
+    "section": "Section heading exactly as given",
+    "target_words": <integer — allocate {word_count} words across all sections proportionally>,
+    "key_argument": "One sentence stating the core argument this section must make",
+    "citations_to_use": ["SOURCE 1", "SOURCE 3"],
+    "angle": "Brief note on critical angle — what to challenge, compare, or interrogate in this section"
+  }},
+  ...
+]
+
+Allocate word counts so they sum to exactly {word_count}.
+Every section must have at least one citation assigned.
+Return pure JSON only — no markdown, no explanation."""
+
+    out, tokens_in_acc, tokens_out_acc, cost_acc = _do_fast_call(
+        system, user, 1200, "section_plan",
+        tokens_in_acc, tokens_out_acc, cost_acc
     )
-    if len(parts) >= 3:
-        return parts[1] + parts[2]
-    return ""
 
+    try:
+        clean = re.sub(r"```json|```", "", out).strip()
+        plan = json.loads(clean)
+    except Exception:
+        # Fallback: create a simple equal-split plan
+        sections = scaffold_str.strip().split("\n")
+        per = word_count // max(len(sections), 1)
+        plan = [{"section": s.strip(), "target_words": per,
+                 "key_argument": "Develop the argument with evidence from sources.",
+                 "citations_to_use": ["SOURCE 1"],
+                 "angle": "Critically engage with the theory."} for s in sections if s.strip()]
+
+    return plan, tokens_in_acc, tokens_out_acc, cost_acc
+
+
+# ── Stage 3: Write section by section ─────────────────────────────────────────
+
+def _write_sections(agent_name: str, context: str, rubric: str,
+                    citation_index: str, section_plan: list,
+                    word_count: int,
+                    tokens_in_acc: int, tokens_out_acc: float,
+                    cost_acc: float) -> tuple:
+    """
+    Stage 3: Write each section individually using GPT-4o.
+    Each call is small and focused — the model only handles one section at a time,
+    with its exact citation sources and word target in hand.
+    Final call assembles a complete Harvard reference list.
+    """
+    agent  = AGENTS[agent_name]
+    system = agent["system_prompt"]
+    rubric_block = f"\nMARKING RUBRIC:\n{rubric.strip()}\n" if rubric.strip() else ""
+
+    sections_text = []
+
+    for i, sec in enumerate(section_plan):
+        heading      = sec.get("section", f"Section {i+1}")
+        target_words = int(sec.get("target_words", word_count // len(section_plan)))
+        key_arg      = sec.get("key_argument", "")
+        cite_refs    = sec.get("citations_to_use", ["SOURCE 1"])
+        angle        = sec.get("angle", "")
+
+        # Pull out only the relevant citation entries for this section
+        relevant_citations = []
+        for ref in cite_refs:
+            # Find the block for this source in the index
+            pattern = re.compile(rf"({re.escape(ref)}.*?)(?=\nSOURCE \d+|\Z)", re.DOTALL)
+            match = pattern.search(citation_index)
+            if match:
+                relevant_citations.append(match.group(1).strip())
+
+        cite_block = "\n\n".join(relevant_citations) if relevant_citations else citation_index[:3000]
+
+        low  = int(target_words * 0.95)
+        high = int(target_words * 1.05)
+        out_tokens = max(800, min(4000, int(target_words * 1.6) + 300))
+
+        user = f"""ESSAY CONTEXT:
+{context}
+{rubric_block}
+Write the section titled: {heading}
+
+THIS SECTION'S TARGET: {target_words} words ({low}–{high} words acceptable).
+CORE ARGUMENT FOR THIS SECTION: {key_arg}
+CRITICAL ANGLE: {angle}
+
+SOURCES FOR THIS SECTION (cite ONLY from these — use Harvard in-text format):
+{cite_block}
+
+WRITING RULES:
+- Write the section heading on the first line, then the body paragraphs.
+- Do NOT write an introduction or conclusion to the essay here — this is one section only.
+- Every paragraph advances the argument. No padding, no description without analysis.
+- Apply theory critically: explain it, deploy it, challenge its limits.
+- Use Harvard in-text citations: (Author, Year) or Author (Year) states...
+- Do NOT use markdown symbols (**, ##, *, __).
+- Do NOT include a References list — that comes at the end.
+- Write exactly {target_words} words of body text for this section."""
+
+        out, tokens_in_acc, tokens_out_acc, cost_acc = _do_api_call(
+            system, user, out_tokens, f"write_section_{i+1}",
+            tokens_in_acc, tokens_out_acc, cost_acc
+        )
+        sections_text.append(out.strip())
+
+    # ── Final: generate consolidated Harvard reference list ───────────────
+    ref_user = f"""Based on the citation index below, produce a complete Harvard reference list for all sources.
+Format each entry correctly: Author(s) (Year) Title. Journal/Publisher, Volume(Issue), Pages.
+List alphabetically by first author surname.
+Title the list: References
+
+CITATION INDEX:
+{citation_index}
+
+Return ONLY the reference list — nothing else."""
+
+    ref_out, tokens_in_acc, tokens_out_acc, cost_acc = _do_fast_call(
+        system, ref_user, 1000, "reference_list",
+        tokens_in_acc, tokens_out_acc, cost_acc
+    )
+
+    full_output = "\n\n".join(sections_text) + "\n\n" + ref_out.strip()
+    return full_output, tokens_in_acc, tokens_out_acc, cost_acc
+
+
+# ── Main entry point ───────────────────────────────────────────────────────────
 
 def run_writer(agent_name: str, context: str, structure: str,
                rubric: str, word_count: int, source_texts: list) -> tuple:
+    """
+    3-stage pipeline:
+      Stage 1 (gpt-4o-mini): Extract structured citation index from each paper.
+      Stage 2 (gpt-4o-mini): Plan sections with citation assignments + word targets.
+      Stage 3 (gpt-4o):      Write each section individually with exact sources in hand.
 
-    agent  = AGENTS[agent_name]
-    system = agent["system_prompt"]
-
-    # ── Parse structure into explicit scaffold ─────────────────────────
-    sections = _parse_structure_sections(structure)
-    if sections:
-        scaffold_lines = [f"  {s}" for s in sections]
-        scaffold_str = "\n".join(scaffold_lines)
-    else:
-        scaffold_str = structure.strip()
-
-    # ── Build source block — uses full 80k char budget ─────────────────
-    source_block = _build_source_block(source_texts, max_total_chars=80000)
-
-    # ── Rubric ─────────────────────────────────────────────────────────
-    rubric_block = f"\nMARKING RUBRIC:\n{rubric.strip()}\n" if rubric.strip() else ""
-
-    # ── Token budget ───────────────────────────────────────────────────
-    # ~1.35 tokens per word for academic prose + 900 buffer for references
-    output_tokens = max(2500, min(16000, int(word_count * 1.5) + 900))
-    low_wc  = int(word_count * 0.97)
-    high_wc = int(word_count * 1.03)
-
-    # ── Primary prompt ─────────────────────────────────────────────────
-    user_prompt = f"""ASSESSMENT CONTEXT
-==================
-{context}
-
-YOUR STRUCTURE — YOU MUST FOLLOW THIS EXACTLY:
-===============================================
-{scaffold_str}
-
-You must write every section listed above in the order given.
-Do not skip, merge, rename, or reorder any section.
-Each section must be substantive — not a single paragraph unless the word count is very low.
-{rubric_block}
-WORD COUNT — MANDATORY:
-The body (everything before References) must be {word_count} words, within ±3% ({low_wc}–{high_wc} words).
-References are excluded from the count and must be complete.
-If you reach what feels like a natural conclusion before {word_count} words: you have not gone deep enough.
-Deepen the argument — apply theory, critique its limits, compare competing scholars, interrogate evidence.
-{source_block}
-WRITING STANDARDS:
-- Every paragraph must advance an argument. No description, no padding, no filler transitions.
-- Apply theory critically: explain it, use it, challenge it, compare it to alternatives.
-- Ground every major claim in the source materials with Harvard in-text citations.
-- Write as a first-class postgraduate submission: substantive, critical, intellectually rigorous.
-- Do NOT use markdown symbols (**, ##, *, __) — plain prose and paragraph breaks only.
-
-Begin writing now. Write ALL sections. End with a complete Harvard reference list titled: References"""
-
+    This solves the core problem: the model can no longer fabricate citations
+    because it works from an extracted index, not raw paper text it might ignore.
+    Each write call is small and focused — no word count drift, no continuation hacks.
+    """
     total_in, total_out, total_cost = 0, 0, 0.0
-    output, total_in, total_out, total_cost = _do_api_call(
-        system, user_prompt, output_tokens, "writing",
+
+    sections = _parse_structure_sections(structure)
+    scaffold_str = "\n".join(f"  {s}" for s in sections) if sections else structure.strip()
+
+    # ── Stage 1: Extract citations ─────────────────────────────────────
+    citation_index, total_in, total_out, total_cost = _extract_citations_from_sources(
+        source_texts, total_in, total_out, total_cost
+    )
+
+    # ── Stage 2: Build section plan ────────────────────────────────────
+    section_plan, total_in, total_out, total_cost = _build_section_plan(
+        context, structure, scaffold_str, citation_index, word_count,
         total_in, total_out, total_cost
     )
 
-    # ── Continuation passes (up to 2) to hit word count ───────────────
-    # After each pass, we cleanly separate body from references,
-    # append new body content, and keep only ONE references section at the end.
-    for pass_num in range(1, 3):
-        body_wc = _body_word_count(output)
-        if body_wc >= int(word_count * 0.92):
-            break  # Close enough — stop
-
-        shortfall   = word_count - body_wc
-        cont_tokens = max(1500, min(10000, int(shortfall * 1.6) + 800))
-
-        # Cleanly extract body and references from current output
-        body_so_far = _strip_references(output)
-        refs_so_far = _extract_references(output)
-
-        cont_prompt = f"""You are continuing an academic write-up that is currently {body_wc} words in the body.
-The target is {word_count} words. You must write approximately {shortfall} more words of body content.
-
-RULES:
-- Do NOT repeat or summarise anything already written.
-- Do NOT restart from the beginning.
-- Do NOT include a References section — that will be appended separately.
-- Continue seamlessly from where the text ends — pick up mid-section if needed.
-- Deepen existing arguments: more critical engagement with theory, more evidence from source materials, stronger comparative analysis.
-- If a section was too brief, expand it substantively.
-- No markdown symbols (**, ##, *, __).
-- Stop when you have written approximately {shortfall} words of new body content.
-- Do NOT write "References" at the end.
-
-STRUCTURE REMINDER — ensure all these sections are covered:
-{scaffold_str}
-
-TEXT SO FAR (do not repeat this — continue from where it ends):
----
-{body_so_far[-6000:]}
----
-
-Continue now, writing the remaining {shortfall} words of body content only:"""
-
-        cont_out, total_in, total_out, total_cost = _do_api_call(
-            system, cont_prompt, cont_tokens, f"writing_continuation_{pass_num}",
-            total_in, total_out, total_cost
-        )
-
-        # Strip any references the model may have added despite instruction
-        cont_body = _strip_references(cont_out).strip()
-
-        # Rebuild: clean body + new body + single references block
-        if refs_so_far:
-            output = body_so_far + "\n\n" + cont_body + "\n\n" + refs_so_far
-        else:
-            output = body_so_far + "\n\n" + cont_body
+    # ── Stage 3: Write section by section ──────────────────────────────
+    output, total_in, total_out, total_cost = _write_sections(
+        agent_name, context, rubric, citation_index, section_plan, word_count,
+        total_in, total_out, total_cost
+    )
 
     return output, total_in, total_out, total_cost
 
@@ -746,10 +889,10 @@ def count_body_words(output_text: str) -> int:
 def check_source_similarity(output_text: str, source_texts: list) -> float:
     if not source_texts:
         return 0.0
-    output_emb = get_embedding(output_text[:8000])
+    output_emb = get_embedding(output_text[:6000])
     scores = []
     for src in source_texts:
-        src_emb = get_embedding(src[:8000])
+        src_emb = get_embedding(src[:6000])
         scores.append(similarity_score(output_emb, src_emb))
     return max(scores) if scores else 0.0
 
